@@ -256,6 +256,12 @@ logo = motif.scale(factor)
 solid = outer.extrude(32) + logo.extrude(4).translate((0, 0, 32))
 
 
+single = mesh(solid)
+assert single.body_count == 1
+single.apply_translation(-single.bounds[0])
+single.export(out / "aufsteller-600-einteilig.stl")
+
+
 def left_mask(x):
     # Female on the left. Two tapered tabs on the right engage along Z.
     rect = cs.square((x + 100, 400)).translate((-100, -50))
