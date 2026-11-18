@@ -23,6 +23,7 @@ Use filled vector paths on a transparent background. Convert strokes and text to
 - [Small one-piece test print](static/logo-3d/aufsteller.stl) — 189.9 × 68.4 × 13.6 mm. Change colour above 12 mm.
 - [600 mm single-piece stand](static/logo-3d/aufsteller-600-einteilig.stl) — one solid for large-format printers. Print back down and change colour above 32 mm.
 - [600 mm push-fit version](static/logo-3d/steckmodell-600-p1s.zip) — three ivory backing panels and fourteen navy inserts. Print the panels back down and the inserts face down. Join the backing panels along their dovetails, then press the inserts into their matching pockets. Parts are oriented and individually sized for the Bambu Lab P1S.
+- [600 mm P1S + AMS project](static/logo-3d/git-nrw-600-drei-segmente-p1s-ams.3mf) — three plates, one segment per plate, with the relief printed directly on the backing. Each plate changes from filament 1 to filament 2 at layer 161 (32.2 mm).
 - [600 mm colour-change version](static/logo-3d/aufsteller-600-p1s.zip) — three panels with integral relief. Change filament above 32 mm. The two small coupons in this archive reproduce the panel joint.
 
 Run `uv run models/logo-3d/generate.py` to rebuild the example and its viewer geometry. The panel seams, pins and arrangement are specific to this example. Meshes were checked digitally. Physical fit has not been tested.
