@@ -26,3 +26,7 @@ Use filled vector paths on a transparent background. Convert strokes and text to
 - [600 mm colour-change version](static/logo-3d/aufsteller-600-p1s.zip) — three panels with integral relief. Change filament above 32 mm. The two small coupons in this archive reproduce the panel joint.
 
 Run `uv run models/logo-3d/generate.py` to rebuild the example and its viewer geometry. The panel seams, pins and arrangement are specific to this example. Meshes were checked digitally. Physical fit has not been tested.
+
+## Optional connector test
+
+[Desk-edge cable holder for the P1S (3MF)](static/logo-3d/kabelhalter-p1s.3mf). Plate 1 contains the two dovetailed base halves. Plate 2 contains a fork with two locating pins and 4.4 and 6 mm cable slots. Assemble the base on a flat surface, press in the fork, then attach the base with double-sided tape so the slots overhang the desk edge. Each plate uses one filament. The shorter base tests the dovetail cross-section and clearance and the larger relief pin size of the 600 mm stand.
