@@ -24,9 +24,11 @@ Use filled vector paths on a transparent background. Convert strokes and text to
 - [600 mm single-piece stand](static/logo-3d/aufsteller-600-einteilig.stl) — one solid for large-format printers. Print back down and change colour above 32 mm.
 - [600 mm push-fit version](static/logo-3d/steckmodell-600-p1s.zip) — three ivory backing panels and fourteen navy inserts. Print the panels back down and the inserts face down. Join the backing panels along their dovetails, then press the inserts into their matching pockets. Parts are oriented and individually sized for the Bambu Lab P1S.
 - [600 mm P1S + AMS project](static/logo-3d/git-nrw-600-drei-segmente-p1s-ams.3mf) — three plates, one segment per plate, with the relief printed directly on the backing. Each plate changes from filament 1 to filament 2 at layer 161 (32.2 mm).
-- [600 mm colour-change version](static/logo-3d/aufsteller-600-p1s.zip) — three panels with integral relief. Change filament above 32 mm. The two small coupons in this archive reproduce the panel joint.
+- [600 mm colour-change version](static/logo-3d/aufsteller-600-p1s.zip) — three panels with integral relief. Change filament above 32 mm. The two small coupons reproduce the lower dovetail and its retaining detent.
 
 Run `uv run models/logo-3d/generate.py` to rebuild the example and its viewer geometry. The panel seams, pins and arrangement are specific to this example. Meshes were checked digitally. Physical fit has not been tested.
+
+[P1S detent test plate](static/logo-3d/passprobe-60cm-schwalbenschwanz-mit-rastung-p1s.3mf) — a 12 mm deep sample of the lower joint of the v1.2 panels. Start with the left segment face up, then press the next segment down until the backs are flush. The revised panels use 12 mm necks and one retaining detent per seam. Keep the three panels from the same version together.
 
 ## Optional connector test
 

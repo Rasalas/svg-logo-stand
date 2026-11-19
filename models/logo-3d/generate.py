@@ -265,8 +265,8 @@ single.export(out / "aufsteller-600-einteilig.stl")
 def left_mask(x):
     # Female on the left. Two tapered tabs on the right engage along Z.
     rect = cs.square((x + 100, 400)).translate((-100, -50))
-    for y in (30, 52):
-        tab = cs([[(x + 1, y - 6), (x + 1, y + 6), (x - 11, y + 10), (x - 11, y - 10)]])
+    for y in (25, 57):
+        tab = cs([[(x + 1, y - 5.5), (x + 1, y + 5.5), (x - 11, y + 11.5), (x - 11, y - 11.5)]])
         assert tab.area() > 0 and (tab - outer).area() < 0.01
         rect -= tab
     return rect
@@ -275,6 +275,29 @@ def left_mask(x):
 l, r = left_mask(225), left_mask(386)
 whole = cs.square((800, 400)).translate((-100, -50))
 areas = [l, r - l, whole - r]
+
+
+# The tested V2 flank angle is retained, with a 12 mm neck at the seam.
+SEAM_CLEARANCE = 0.035
+SEAMS = (225, 386)
+
+def box(x, y, z, dx, dy, dz):
+    return m.Manifold.cube((dx, dy, dz)).translate((x, y, z))
+
+def lock_panel(panel, index):
+    """A sprung detent on the back of the lower male tooth engages a blind recess."""
+    if index < len(SEAMS):
+        tip = SEAMS[index] - 11
+        panel -= box(tip - 0.85, 16.5, 1.6, 1.2, 4.0, 2.8)
+    if index:
+        tip = SEAMS[index-1] - 11
+        # Isolate a 2 mm thick finger laterally and from the rigid upper tooth.
+        panel -= box(tip+2, 12, 0, 1.1, 18, 7.8)
+        panel -= box(tip-1, 12, 7, 4.1, 18, 0.8)
+        # Lower lead-in ramp and steeper return face. XY bending follows the layers.
+        nose = cs([[(0.4,1.9),(-0.48,3.1),(-0.48,3.8),(0.4,4.2)]],m.FillRule.EvenOdd)
+        panel += nose.extrude(3.2).rotate((90,0,0)).translate((tip,20,0))
+    return panel
 
 
 def printable(path, s):
@@ -291,15 +314,15 @@ with TemporaryDirectory() as tmp:
     folder = Path(tmp)
     parts = []
     for i, (area, label) in enumerate(zip(areas, ["links", "mitte", "rechts"])):
-        section = area.offset(-0.13)
-        part = solid ^ section.extrude(40)
+        section = area.offset(-SEAM_CLEARANCE)
+        part = lock_panel(solid ^ section.extrude(40), i)
         parts.append(part)
         target = folder / f"{i + 1}-{label}.stl"
         printable(target, part)
         if i == 0:
             (out / "600-links.stl").write_bytes(target.read_bytes())
     assert all((a ^ b).is_empty() for i, a in enumerate(parts) for b in parts[i + 1 :])
-    coupon = cs.square((38, 24)).translate((204, 18)).extrude(5)
+    coupon = cs.square((44, 31)).translate((199, 9.5)).extrude(12)
     for i in [0, 1]:
         printable(folder / f"passprobe-{i + 1}.stl", parts[i] ^ coupon)
     (folder / "Montage.txt").write_text("""git.nrw · Aufsteller 600 mm
@@ -308,10 +331,10 @@ Drei Segmente in der gespeicherten Ausrichtung und bei 100 % drucken.
 Weiß bis einschließlich 32 mm, die erste Schicht darüber dunkelblau drucken.
 Das Relief ist in jedes Segment integriert. Gesamttiefe 36 mm.
 
-Für einen schnellen Test die beiden 5 mm hohen Passproben drucken.
-Sie bilden einen der Schwalbenschwänze mit dem gleichen seitlichen Spiel wie am Aufsteller ab.
-Die Segmente flach mit dem Motiv nach oben auf den Tisch legen. Die Schwalbenschwänze
-von oben in das Nachbarteil schieben, bis alle Rückseiten bündig aufliegen.
+Für einen schnellen Test die beiden 12 mm hohen Passproben drucken.
+Sie bilden den unteren Schwalbenschwanz samt Rastnase und Gegenlager mit dem gleichen seitlichen Spiel wie am Aufsteller ab.
+Mit dem linken Segment beginnen, Motiv nach oben. Erst die Mitte, dann das rechte Segment
+von oben bis auf den Tisch einschieben. Am unteren Zahn rastet jeweils eine Nase ein.
 Danach den Aufsteller an der Unterkante mit beiden Händen aufrichten.
 """)
     with zipfile.ZipFile(
@@ -325,11 +348,11 @@ with TemporaryDirectory() as tmp:
     folder = Path(tmp)
     sockets = cs()
     preview = []
-    pocket = logo.offset(0.22).simplify(0.012)
+    pocket = logo.offset(0.10).simplify(0.012)
     for i, piece in enumerate(sorted(logo.decompose(), key=lambda part: part.bounds()[0]), 1):
         center, clearance = anchor(piece)
         radius = min(3.2, clearance - 0.3)
-        socket = cs.circle(radius, 48).translate(center)
+        socket = cs.circle(radius - 0.03, 48).translate(center)
         sockets += socket
         peg = m.Manifold.cylinder(4, radius - 0.35, radius + 0.055, 48)
         insert = piece.extrude(5) + peg.translate((*center, -4))
@@ -337,13 +360,13 @@ with TemporaryDirectory() as tmp:
         preview.append([rings(piece), rings(socket)])
     panels = []
     for label, area in zip(["links", "mitte", "rechts"], areas):
-        face = outer ^ area.offset(-0.13)
+        face = outer ^ area.offset(-SEAM_CLEARANCE)
         middle = face - sockets
         top = face - pocket
         panel = face.extrude(32) - sockets.extrude(6).translate((0,0,26.5)) - pocket.extrude(2).translate((0,0,31))
-        printable(folder / f"weiss-{label}.stl", panel)
+        printable(folder / f"weiss-{label}.stl", lock_panel(panel, len(panels)))
         panels.append([rings(face), rings(middle), rings(top)])
-    (folder/"Montage.txt").write_text("600-mm-Steckmodell · P1S · 100 %\n3 weiße Träger flach mit den Taschen nach oben drucken. Die 14 blauen Teile liegen mit der Sichtseite unten und dem Zapfen oben. Die weißen Segmente von oben an den Schwalbenschwänzen zusammenfügen. Anschließend die blauen Teile von vorn in die passenden Konturtaschen drücken.\n")
+    (folder/"Montage.txt").write_text("600-mm-Steckmodell · P1S · 100 %\n3 weiße Träger flach mit den Taschen nach oben drucken. Die 14 blauen Teile liegen mit der Sichtseite unten und dem Zapfen oben. Links beginnen und nacheinander Mitte und rechtes Segment mit den Schwalbenschwänzen von oben bis zum Einrasten einschieben. Anschließend die blauen Teile von vorn in die passenden Konturtaschen drücken.\n")
     with zipfile.ZipFile(out/"steckmodell-600-p1s.zip","w",zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.iterdir()):
             archive.write(path,path.name)
