@@ -4,9 +4,9 @@
 # ///
 """Twin tapered dovetail coupon. X crosses the seam, Y rises from the foot,
 Z runs from the rear print surface towards the front. Dimensions in mm."""
+import argparse
 import json
 import math
-import sys
 from pathlib import Path
 
 import manifold3d as m
@@ -107,9 +107,14 @@ def verify(left, right, pin):
             assert (left ^ turned).volume() > .01
 
 
-def export(out):
+def export(out, short=False):
     out.mkdir(parents=True, exist_ok=True)
     solids = build()
+    if short:
+        left, right, pin = solids
+        # Keep the original flanks around the complete pin channel at Z=12..18.5.
+        sample = box(-18, -1, 9, 32, 71, 12)
+        solids = (left ^ sample, right ^ sample, pin)
     verify(*solids)
     parts, scene, section = [], [], []
     for solid, name in zip(solids, ('Nutteil', 'Doppelzapfen', 'Querstift')):
@@ -123,11 +128,17 @@ def export(out):
         path = out / (name+'.stl')
         model.export(path)
         parts.append(dict(path=str(path.resolve()), count=1, filaments=[1]))
-    plate = dict(plate_name='V5 - Doppelfuehrung und Querstift', need_arrange=True, objects=parts)
+    plate = dict(plate_name=('V5 - Kurzprobe 12 mm' if short else 'V5 - Doppelfuehrung und Querstift'), need_arrange=True, objects=parts)
     (out/'platte.json').write_text(json.dumps(dict(plates=[plate])))
+    if short:
+        return
     template = Path(__file__).with_name('keyed_joint.html').read_text()
     (out/'steckprobe-v5.html').write_text(template.replace('/*MESH*/[]', json.dumps([scene, section],separators=(',',':'))))
 
 
 if __name__ == '__main__':
-    export(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', type=Path)
+    parser.add_argument('--short', action='store_true', help='Export the 12 mm fit sample')
+    args = parser.parse_args()
+    export(args.output, args.short)
