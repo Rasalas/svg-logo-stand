@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steckprobe V5 · git.nrw</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,sans-serif;color:#18374c}main{max-width:810px;margin:auto;padding:16px}h1{font-size:1.5rem;margin:0}p{margin:.65rem 0}canvas{width:100%;height:clamp(320px,53vh,560px);display:block;background:#edf1f3;touch-action:none;cursor:grab;border-radius:10px}section{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0}button{font:inherit;background:white;border:1px solid #959fa9;border-radius:5px;padding:.25rem .75rem;cursor:pointer}button[aria-pressed=true]{background:#003057;color:white}input{width:min(280px,50vw);vertical-align:middle}a{color:#005884}
+</style><main>
+<h1>Steckprobe V5</h1><p>Zwei Schwalbenschwänze führen die Fuge. Der goldene Stift greift von der Standkante durch den unteren Zapfen.</p>
+<canvas tabindex="0" aria-label="3D-Modell. Ziehen oder die Pfeiltasten verwenden, um es zu drehen."></canvas>
+<p id="error" hidden>Die 3D-Ansicht benötigt WebGL. Das 3MF-Projekt lässt sich auch in Bambu Studio drehen.</p>
+<section aria-label="Ansicht"><button id="outside" aria-pressed="true">Außenansicht</button><button id="section" aria-pressed="false">Schnitt durch den Stift</button></section>
+<section><label>Montage <input type="range" id="assembly" min="0" max="100" value="20"></label><output id="stage" for="assembly"></output></section>
+<p>Zum Drehen ziehen. Mit dem Regler zuerst die Führungen zusammenschieben und anschließend den Stift einsetzen. Die Farben kennzeichnen drei einzeln druckbare Teile.</p>
+<p><a href="steckprobe-v5-doppelzapfen-querstift-p1s.3mf" download>P1S-Druckplatte</a> · <a href="steckprobe-v5-doppelzapfen-querstift-stl.zip" download>Einzelteile als STL</a></p>
+</main><script>
+const meshes=/*MESH*/[];
+const canvas=document.querySelector('canvas');
+const gl=canvas.getContext('webgl',{antialias:true});
+if (!gl) document.querySelector('#error').hidden=false;
+else {
+ const vertex=`attribute vec3 point;attribute vec3 normal;uniform vec3 offset;uniform vec3 colour;
+ uniform vec4 rotation;uniform vec2 scale;varying vec3 shade;
+ vec3 turn(vec3 v){float d=rotation.y*v.x+rotation.x*v.z;
+ return vec3(rotation.x*v.x-rotation.y*v.z, rotation.z*v.y-rotation.w*d, rotation.w*v.y+rotation.z*d);}
+ void main(){vec3 p=turn(point+offset);gl_Position=vec4(p.xy*scale,-p.z/150.,1.);
+ float light=.72+.28*max(dot(turn(normal),normalize(vec3(-.4,.6,.8))),0.);shade=colour*light;}`;
+ const fragment='precision mediump float;varying vec3 shade;void main(){gl_FragColor=vec4(shade,1.);}';
+ const program=gl.createProgram();
+ for (const [kind,src] of [[gl.VERTEX_SHADER,vertex],[gl.FRAGMENT_SHADER,fragment]]){
+   const shader=gl.createShader(kind);gl.shaderSource(shader,src);gl.compileShader(shader);
+   if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(shader));
+   gl.attachShader(program,shader);
+ }
+ gl.linkProgram(program);gl.useProgram(program);gl.enable(gl.DEPTH_TEST);
+ const buffers=meshes.map(scene=>scene.map(([verts,faces])=>{
+   const data=[];
+   for(const ids of faces){
+     const [a,b,c]=ids.map(i=>verts[i]),u=b.map((x,i)=>x-a[i]),v=c.map((x,i)=>x-a[i]);
+     const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+     const length=Math.hypot(...n)||1;
+     for(const p of [a,b,c])data.push(...p,...n.map(x=>x/length));
+   }
+   const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
+   return [buf,data.length/6];
+ }));
+ const uniforms=Object.fromEntries(['offset','colour','rotation','scale'].map(k=>[k,gl.getUniformLocation(program,k)]));
+ const attrs=['point','normal'].map(k=>gl.getAttribLocation(program,k));attrs.forEach(i=>gl.enableVertexAttribArray(i));
+ const assembly=document.querySelector('#assembly'),stage=document.querySelector('#stage');
+ let cut=false,yaw=-.75,pitch=.38,drag;
+ function draw(){
+   const t=Number(assembly.value),slide=36*Math.max(0,1-t/55),key=40*Math.min(1,(100-t)/45);
+   stage.textContent=t===100?'Stift sitzt':t<55?'1 · Führungen zusammenschieben':'2 · Stift einschieben';
+   const w=canvas.clientWidth,h=canvas.clientHeight,r=Math.min(devicePixelRatio||1,2);
+   canvas.width=Math.round(w*r);canvas.height=Math.round(h*r);gl.viewport(0,0,canvas.width,canvas.height);
+   gl.clearColor(.93,.95,.96,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+   const fit=Math.min(w/100,h/(85+key));
+   gl.uniform2f(uniforms.scale,2*fit/w,2*fit/h);
+   gl.uniform4f(uniforms.rotation,Math.cos(yaw),Math.sin(yaw),Math.cos(pitch),Math.sin(pitch));
+   buffers[+cut].forEach(([buffer,count],i)=>{
+     gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+     attrs.forEach((a,j)=>gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,12*j));
+     gl.uniform3f(uniforms.offset,2,-34+key/2-(i===2?key:0),-16-slide/2+(i===1?slide:0));
+     gl.uniform3fv(uniforms.colour,[[.94,.86,.74],[.13,.38,.56],[1,.67,.14]][i]);gl.drawArrays(gl.TRIANGLES,0,count);
+   });
+ }
+ for(const btn of document.querySelectorAll('button'))btn.onclick=()=>{
+   cut=btn.id==='section';yaw=cut?-1.51:-.75;pitch=cut?.04:.38;assembly.value=cut?100:20;
+   document.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===btn));draw();
+ };
+ assembly.oninput=draw;
+ function turn(x,y){yaw+=x;pitch=Math.max(-1.55,Math.min(1.55,pitch+y));draw();}
+ canvas.onpointerdown=e=>{canvas.setPointerCapture(e.pointerId);drag=[e.clientX,e.clientY];};
+ canvas.onlostpointercapture=()=>drag=null;
+ canvas.onpointermove=e=>{if(drag){turn((e.clientX-drag[0])*.012,(e.clientY-drag[1])*.012);drag=[e.clientX,e.clientY];}};
+ canvas.onkeydown=e=>{const d={ArrowLeft:[-.12,0],ArrowRight:[.12,0],ArrowUp:[0,.12],ArrowDown:[0,-.12]}[e.key];if(d){e.preventDefault();turn(...d);}};
+ new ResizeObserver(draw).observe(canvas);draw();
+}
+</script></html>
