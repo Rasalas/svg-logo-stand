@@ -133,7 +133,7 @@ models = [base, blue.translate((0, 0, 12))]
 
 def mesh(s):
     a = s.to_mesh()
-    t = trimesh.Trimesh(a.vert_properties[:, :3], a.tri_verts, process=True)
+    t = trimesh.Trimesh(a.vert_properties[:, :3], a.tri_verts, process=True, validate=True)
     print(t.is_watertight, t.is_winding_consistent, t.volume)
     assert t.is_watertight and t.is_winding_consistent and t.volume > 0
     return t
@@ -262,43 +262,46 @@ single.apply_translation(-single.bounds[0])
 single.export(out / "aufsteller-600-einteilig.stl")
 
 
-def left_mask(x):
-    # Female on the left. Two tapered tabs on the right engage along Z.
-    rect = cs.square((x + 100, 400)).translate((-100, -50))
-    for y in (25, 57):
-        tab = cs([[(x + 1, y - 5.5), (x + 1, y + 5.5), (x - 11, y + 11.5), (x - 11, y - 11.5)]])
-        assert tab.area() > 0 and (tab - outer).area() < 0.01
-        rect -= tab
-    return rect
+from keyed_joint import CENTRES, DEPTH, FLANK_GAP, box, key_and_socket, tooth
 
-
-l, r = left_mask(225), left_mask(386)
-whole = cs.square((800, 400)).translate((-100, -50))
-areas = [l, r - l, whole - r]
-
-
-# The tested V2 flank angle is retained, with a 12 mm neck at the seam.
-SEAM_CLEARANCE = 0.035
 SEAMS = (225, 386)
+foot = outer.bounds()[1]
+key, channel = key_and_socket()
 
-def box(x, y, z, dx, dy, dz):
-    return m.Manifold.cube((dx, dy, dz)).translate((x, y, z))
 
-def lock_panel(panel, index):
-    """A sprung detent on the back of the lower male tooth engages a blind recess."""
-    if index < len(SEAMS):
-        tip = SEAMS[index] - 11
-        panel -= box(tip - 0.85, 16.5, 1.6, 1.2, 4.0, 2.8)
-    if index:
-        tip = SEAMS[index-1] - 11
-        # Isolate a 2 mm thick finger laterally and from the rigid upper tooth.
-        panel -= box(tip+2, 12, 0, 1.1, 18, 7.8)
-        panel -= box(tip-1, 12, 7, 4.1, 18, 0.8)
-        # Lower lead-in ramp and steeper return face. XY bending follows the layers.
-        nose = cs([[(0.4,1.9),(-0.48,3.1),(-0.48,3.8),(0.4,4.2)]],m.FillRule.EvenOdd)
-        panel += nose.extrude(3.2).rotate((90,0,0)).translate((tip,20,0))
-    return panel
+def panel_mask(index):
+    left = SEAMS[index-1] if index else -100
+    right = SEAMS[index] if index < len(SEAMS) else 700
+    mask = box(left+FLANK_GAP, -50, 0, right-left-2*FLANK_GAP, 400, DEPTH)
+    for seam, male in ((left, True), (right, False)):
+        if seam not in SEAMS:
+            continue
+        for center in CENTRES:
+            tab = tooth(foot+center, -FLANK_GAP if male else FLANK_GAP).translate((seam,0,0))
+            mask = mask + tab if male else mask - tab
+        mask -= channel.translate((seam, foot, 0))
+    return mask
 
+
+masks = [panel_mask(i) for i in range(3)]
+bases = [outer.extrude(DEPTH) ^ mask for mask in masks]
+faces = [base.slice(DEPTH-0.001) for base in bases]
+reliefs = [(logo ^ mask.slice(DEPTH-0.001)).extrude(4).translate((0,0,DEPTH)) for mask in masks]
+for i, seam in enumerate(SEAMS):
+    pin = key.translate((seam,foot,0))
+    for travel in (0, 1, 8, 16, 31):
+        assert (bases[i] ^ bases[i+1].translate((0,0,travel))).volume() < 1e-5
+    assert (pin ^ bases[i+1]).volume() < 1e-5
+    assert 0 < (pin ^ bases[i]).volume() < 2  # only the tested press ribs
+    for dz in (-.3, .3):
+        assert (pin ^ bases[i+1].translate((0,0,dz))).volume() > .01
+
+assembly_text = """Mit den Rückseiten auf einem ebenen Tisch beginnen, Motiv nach oben.
+Erst das mittlere Segment von oben in das linke schieben, dann das rechte in die Mitte.
+Sobald die Vorderseiten bündig sind, je einen Querstift mit der schmalen Spitze
+von der Standkante her in die fünfeckige Öffnung drücken. Zwei Stifte drucken.
+Der bündige Sitz ist für dauerhafte Montage ausgelegt.
+"""
 
 def printable(path, s):
     t = mesh(s)
@@ -313,30 +316,17 @@ def printable(path, s):
 with TemporaryDirectory() as tmp:
     folder = Path(tmp)
     parts = []
-    for i, (area, label) in enumerate(zip(areas, ["links", "mitte", "rechts"])):
-        section = area.offset(-SEAM_CLEARANCE)
-        part = lock_panel(solid ^ section.extrude(40), i)
+    for i, label in enumerate(["links", "mitte", "rechts"]):
+        part = (bases[i] + reliefs[i]).simplify(0.001)
         parts.append(part)
         target = folder / f"{i + 1}-{label}.stl"
         printable(target, part)
         if i == 0:
             (out / "600-links.stl").write_bytes(target.read_bytes())
     assert all((a ^ b).is_empty() for i, a in enumerate(parts) for b in parts[i + 1 :])
-    coupon = cs.square((44, 31)).translate((199, 9.5)).extrude(12)
-    for i in [0, 1]:
-        printable(folder / f"passprobe-{i + 1}.stl", parts[i] ^ coupon)
-    (folder / "Montage.txt").write_text("""git.nrw · Aufsteller 600 mm
-Je eine STL-Datei mittig auf eine eigene P1S-Druckplatte legen, Rückseite unten.
-Drei Segmente in der gespeicherten Ausrichtung und bei 100 % drucken.
-Weiß bis einschließlich 32 mm, die erste Schicht darüber dunkelblau drucken.
-Das Relief ist in jedes Segment integriert. Gesamttiefe 36 mm.
-
-Für einen schnellen Test die beiden 12 mm hohen Passproben drucken.
-Sie bilden den unteren Schwalbenschwanz samt Rastnase und Gegenlager mit dem gleichen seitlichen Spiel wie am Aufsteller ab.
-Mit dem linken Segment beginnen, Motiv nach oben. Erst die Mitte, dann das rechte Segment
-von oben bis auf den Tisch einschieben. Am unteren Zahn rastet jeweils eine Nase ein.
-Danach den Aufsteller an der Unterkante mit beiden Händen aufrichten.
-""")
+    printable(folder / "Querstift-2x-drucken.stl", key)
+    (folder / "Montage.txt").write_text("600 mm, drei Segmente mit integriertem Logo. Rückseite unten. "
+        "Weiß bis 32 mm, ab der nächsten Schicht Logofarbe.\n" + assembly_text)
     with zipfile.ZipFile(
         out / "aufsteller-600-p1s.zip", "w", zipfile.ZIP_DEFLATED
     ) as z:
@@ -359,16 +349,18 @@ with TemporaryDirectory() as tmp:
         printable(folder / f"blau-{i:02}.stl", insert.rotate((180, 0, 0)))
         preview.append([rings(piece), rings(socket)])
     panels = []
-    for label, area in zip(["links", "mitte", "rechts"], areas):
-        face = outer ^ area.offset(-SEAM_CLEARANCE)
+    for label, face, base_panel in zip(["links", "mitte", "rechts"], faces, bases):
         middle = face - sockets
         top = face - pocket
-        panel = face.extrude(32) - sockets.extrude(6).translate((0,0,26.5)) - pocket.extrude(2).translate((0,0,31))
-        printable(folder / f"weiss-{label}.stl", lock_panel(panel, len(panels)))
+        panel = base_panel - sockets.extrude(6).translate((0,0,26.5)) - pocket.extrude(2).translate((0,0,31))
+        printable(folder / f"weiss-{label}.stl", panel)
         panels.append([rings(face), rings(middle), rings(top)])
-    (folder/"Montage.txt").write_text("600-mm-Steckmodell · P1S · 100 %\n3 weiße Träger flach mit den Taschen nach oben drucken. Die 14 blauen Teile liegen mit der Sichtseite unten und dem Zapfen oben. Links beginnen und nacheinander Mitte und rechtes Segment mit den Schwalbenschwänzen von oben bis zum Einrasten einschieben. Anschließend die blauen Teile von vorn in die passenden Konturtaschen drücken.\n")
+    printable(folder / "Querstift-2x-drucken.stl", key)
+    (folder/"Montage.txt").write_text("600 mm. Drei Träger mit der Rückseite unten, 14 Einsätze mit der Sichtseite unten drucken.\n"
+        + assembly_text + "Zum Schluss die blauen Teile in ihre Konturtaschen drücken.\n")
     with zipfile.ZipFile(out/"steckmodell-600-p1s.zip","w",zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.iterdir()):
             archive.write(path,path.name)
     with (out/"geometry.js").open("a") as js:
-        js.write("const assembly = "+json.dumps({"panels":panels,"inserts":preview},separators=(",",":"))+";\n")
+        pin_mesh = key.to_mesh()
+        js.write("const assembly = "+json.dumps({"panels":panels,"inserts":preview,"keys":{"seams":SEAMS,"foot":foot,"vertices":pin_mesh.vert_properties[:,:3].round(4).tolist(),"faces":pin_mesh.tri_verts.tolist()}},separators=(",",":"))+";\n")

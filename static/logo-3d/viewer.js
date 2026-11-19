@@ -85,6 +85,19 @@ function draw() {
       if(cp*cy<0) obj.layers.reverse();
       obj.layers.forEach(layer=>solid(...layer));
     }
+    if (gap >= 10) {
+      const keys = assembly.keys;
+      keys.seams.forEach((seam,index) => {
+        shiftX = (index-.5)*gap*2.6;
+        const pts = keys.vertices.map(([x,y,z])=>project(seam+x,keys.foot+y-4*gap,z));
+        const triangles = keys.faces.map(ids=>ids.map(i=>pts[i]))
+;
+        triangles.sort((a,b)=>a.reduce((sum,p,i)=>sum+p[2]-b[i][2],0));
+        for(const tri of triangles){
+          context.beginPath();face(tri);context.fillStyle='#ba945a';context.fill();
+        }
+      });
+    }
     return;
   }
   const layers=[
